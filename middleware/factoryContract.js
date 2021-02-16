@@ -12,6 +12,7 @@ class FactoryContract {
       return this.createContract(
         this.addressContract[name],
         abiCtoken,
+        // TODO could be replaced by const, because below been instantiate another DefaultProvider
         new ethers.getDefaultProvider(process.env.VUE_APP_HTTP_PROVIDER)
       );
     }
@@ -37,9 +38,9 @@ class FactoryContract {
       return this.createContract(
         this.addressContract[nameContract],
         abi[nameAbi],
-        Vue.web3Provider
+        new ethers.getDefaultProvider(process.env.VUE_APP_HTTP_PROVIDER)
       );
-    }
+    } else console.log("Invalid contract");
   }
 }
 
