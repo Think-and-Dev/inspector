@@ -1,10 +1,9 @@
 const TestMongo = require("./TestMongo");
-const Market = require("./middleware/market");
-
+const Middleware = require("./middleware/middleware");
 
 //console.log("Test mongoDB!!\n");
 //const testMongo = new TestMongo();
 //testMongo.run().catch(console.dir);
 
-const myMarket = new Market();
-console.log(myMarket.borrowAccounts())
+const middleware = new Middleware();
+console.log(middleware.getAccountUnderwater());
