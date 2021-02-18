@@ -1,4 +1,5 @@
 const FactoryContract = require("./factoryContract");
+const TestMongo = require("../TestMongo");
 const BigNumber = require("bignumber.js");
 const { ethers } = require("ethers");
 const { abi, cRBTCTokenDetails, constants } = require("./constants");
@@ -10,9 +11,10 @@ process.env.VUE_APP_HTTP_PROVIDER = "http://18.218.165.234:4444";
 class Middleware {
   constructor() {
     this.factoryContract = new FactoryContract();
-    this.instance = this.factoryContract.getContractCtoken(
+    this.contractInstance = this.factoryContract.getContractCtoken(
       cRBTCTokenDetails.symbol
     );
+    this.mongoInstance = new TestMongo();
   }
 
   async borrowAccounts() {
@@ -24,7 +26,7 @@ class Middleware {
     );
 
     const abiCtoken = this.isCRBTC ? abi["cRBTC"] : abi["cErc20"];
-    const filterLocal = this.instance.filters.Borrow();
+    const filterLocal = this.contractInstance.filters.Borrow();
     const latest = await provider.getBlockNumber();
     const ini = 1504046;
     for (let index = latest; index > ini; index -= 1000) {
@@ -37,9 +39,15 @@ class Middleware {
         if (logs.length > 0) {
           let auxiliar = logs.map(function (element) {
             const iface = new ethers.utils.Interface(abiCtoken);
-            return iface.parseLog(element).args[0];
+            const { borrowAmount } = iface.parseLog(element).args;
+            return {
+              address: iface.parseLog(element).args[0],
+              borrowAmount: new BigNumber((borrowAmount._hex).toString()).div(1e18).toString(),
+            };
           });
-          auxiliar = auxiliar.filter((v, i, a) => a.indexOf(v) === i);
+          auxiliar = [
+            ...new Map(auxiliar.map((acc) => [acc.address, acc])).values(),
+          ];
 
           for (let index = 0; index < auxiliar.length; index++) {
             borrows.push(auxiliar[index]);
@@ -49,24 +57,29 @@ class Middleware {
         console.error("ERROR", error);
       }
     }
-    borrows = borrows.filter((v, i, a) => a.indexOf(v) === i);
+    borrows = [...new Map(borrows.map((acc) => [acc.address, acc])).values()];
     return borrows;
   }
 
   async getAccountUnderwater() {
     const borrowAccounts = await this.borrowAccounts();
-    let underWaters = [];
 
     for (let index = 0; index < borrowAccounts.length; index++) {
-      await this.getAccountLiquidity(borrowAccounts[index]).then(
+      await this.getAccountLiquidity(borrowAccounts[index].address).then(
         (liquidity) => {
-          if (new BigNumber(liquidity.accountShortfall._hex).isGreaterThan(0)) {
-            underWaters.push(borrowAccounts[index]);
-          }
+          const actualIsRed =
+            new BigNumber(liquidity.accountShortfall._hex).isGreaterThan(0) ===
+            true
+              ? true
+              : false;
+          this.mongoInstance.saveAndFlush({
+            address: borrowAccounts[index].address,
+            isRed: actualIsRed,
+            borrowAmount: borrowAccounts[index].borrowAmount
+          });
         }
       );
     }
-    return underWaters;
   }
 
   async getAccountLiquidity(account) {
