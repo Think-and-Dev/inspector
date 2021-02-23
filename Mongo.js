@@ -1,10 +1,13 @@
 const { MongoClient } = require("mongodb");
+const log4js = require("log4js");
 
 class Mongo {
   constructor() {
     this.uri = "mongodb://127.0.0.1:27017/mongodb";
     this.client = new MongoClient(this.uri, { useUnifiedTopology: true });
     this.databaseName = "rlending";
+    this.logger = log4js.getLogger();
+    this.logger.level = "info";
   }
 
   async saveAndFlush(persistentObject) {
@@ -17,13 +20,23 @@ class Mongo {
       const acc = await collection.findOne(query);
       console.log(acc);
       */
-    } finally {
-      //console.log("<------->");
+    } catch (err) {
+      this.logger.error(
+        "Error inserting:",
+        persistentObject.address,
+        "Error description:",
+        err
+      );
     }
   }
 
   async createConnection() {
-    await this.client.connect();
+    try {
+      await this.client.connect();
+      this.logger.info("Created connection to DB!")
+    } catch (err) {
+      this.logger.error(err);
+    }
   }
 
   async getConnection() {
@@ -32,7 +45,11 @@ class Mongo {
   }
 
   async closeConnection() {
-    await this.client.close();
+    try {
+      await this.client.close();
+    } catch (err) {
+      this.logger.error(err);
+    }
   }
 }
 module.exports = Mongo;
