@@ -17,6 +17,7 @@
   "dependencies": {
     "bignumber.js": "^9.0.1",
     "ethers": "^5.0.30",
+    "log4js": "^6.3.0",
     "mongodb": "^3.6.4"
   }
 }
