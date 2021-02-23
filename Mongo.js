@@ -1,6 +1,6 @@
 const { MongoClient } = require("mongodb");
 
-class TestMongo {
+class Mongo {
   constructor() {
     this.uri = "mongodb://127.0.0.1:27017/mongodb";
     this.client = new MongoClient(this.uri, { useUnifiedTopology: true });
@@ -9,12 +9,14 @@ class TestMongo {
 
   async saveAndFlush(persistentObject) {
     try {
-      const collection = await this.createConnection();
+      const collection = await this.getConnection();
       await collection.insertOne(persistentObject);
 
+      /*
       const query = { address: persistentObject.address };
       const acc = await collection.findOne(query);
-      //console.log(acc);
+      console.log(acc);
+      */
     } finally {
       //console.log("<------->");
     }
@@ -22,6 +24,9 @@ class TestMongo {
 
   async createConnection() {
     await this.client.connect();
+  }
+
+  async getConnection() {
     const database = this.client.db(this.databaseName);
     return database.collection(this.databaseName);
   }
@@ -30,4 +35,4 @@ class TestMongo {
     await this.client.close();
   }
 }
-module.exports = TestMongo;
+module.exports = Mongo;
