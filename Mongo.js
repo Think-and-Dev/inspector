@@ -1,11 +1,12 @@
 const { MongoClient } = require("mongodb");
 const log4js = require("log4js");
+const { MONGO_URI, MONGO_DB_NAME } = require("./config/constants");
 
 class Mongo {
   constructor() {
-    this.uri = "mongodb://127.0.0.1:27017/mongodb";
+    this.uri = MONGO_URI;
     this.client = new MongoClient(this.uri, { useUnifiedTopology: true });
-    this.databaseName = "rlending";
+    this.databaseName = MONGO_DB_NAME;
     this.logger = log4js.getLogger();
     this.logger.level = "info";
   }
@@ -33,7 +34,7 @@ class Mongo {
   async createConnection() {
     try {
       await this.client.connect();
-      this.logger.info("Created connection to DB!")
+      this.logger.info("Created connection to DB!");
     } catch (err) {
       this.logger.error(err);
     }

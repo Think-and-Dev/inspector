@@ -1,11 +1,21 @@
 const { ethers } = require("ethers");
 const { abi, constants, addresses } = require("./constants");
+const { HTTP_PROVIDER, NETWORK_ID } = require("../config/constants");
 
 class FactoryContract {
   constructor() {
-    const chainId = 31; //NETWORK_ID
+    const chainId = NETWORK_ID;
     this.addressContract = addresses[chainId];
   }
+
+  getSigner() {
+    const provider = new ethers.getDefaultProvider(HTTP_PROVIDER);
+    const format = provider.formatter.formats;
+    const signer = provider.getSigner();
+    Object.assign(signer.provider.formatter, { format });
+    return signer;
+  }
+
   getContractCtoken(name) {
     if (this.validateContractName(name)) {
       const abiCtoken = name == "cRBTC" ? abi.cRBTC : abi.cErc20;
@@ -13,7 +23,7 @@ class FactoryContract {
         this.addressContract[name],
         abiCtoken,
         // TODO could be replaced by const, because below been instantiate another DefaultProvider
-        new ethers.getDefaultProvider(process.env.VUE_APP_HTTP_PROVIDER)
+        new ethers.getDefaultProvider(HTTP_PROVIDER)
       );
     }
   }
@@ -38,7 +48,7 @@ class FactoryContract {
       return this.createContract(
         this.addressContract[nameContract],
         abi[nameAbi],
-        new ethers.getDefaultProvider(process.env.VUE_APP_HTTP_PROVIDER)
+        new ethers.getDefaultProvider(HTTP_PROVIDER)
       );
     } else console.log("Invalid contract");
   }

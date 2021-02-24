@@ -1,12 +1,17 @@
 const Mongo = require("../Mongo");
+const Middleware = require("./middleware")
+const { LIQUIDATOR_ADDRESS } = require("../config/constants");
 
 class Liquidator {
   constructor() {
     this.mongoInstance = new Mongo();
-    this.liquidatorAddress = "0xef558B499B7fDeB387c3a3A42E2d414815c64fac";
+    this.middlewareInstance = new Middleware();
+    this.liquidatorAddress = LIQUIDATOR_ADDRESS;
   }
 
-  async liquidateAllAccounts() {}
+  async liquidateAllAccounts() {
+    
+  }
 }
 
 module.exports = Liquidator;
