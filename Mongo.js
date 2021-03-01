@@ -31,6 +31,27 @@ class Mongo {
     }
   }
 
+  async getAll() {
+    try {
+      const collection = await this.getConnection();
+      const searchCursor = await collection.find({ shortfall: { $ne: 0 } });
+
+      let accounts = [];
+
+      while (await searchCursor.hasNext()) {
+        accounts.push(await searchCursor.next());
+      }
+      return accounts;
+    } catch (err) {
+      this.logger.error(
+        "Error obtaining collection:",
+        this.databaseName,
+        "Error description:",
+        err
+      );
+    }
+  }
+
   async createConnection() {
     try {
       await this.client.connect();
