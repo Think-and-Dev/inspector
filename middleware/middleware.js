@@ -1,21 +1,63 @@
-const FactoryContract = require("./factoryContract");
 const Mongo = require("../Mongo");
 const BigNumber = require("bignumber.js");
 const { ethers } = require("ethers");
-const { abi, cTokensDetails, constants } = require("./constants");
+const { abi, cTokensDetails, constants, addresses } = require("./constants");
 const {
   HTTP_PROVIDER,
   INITIAL_BLOCK,
   CRBTC_SYMBOL,
+  NETWORK_ID,
+  PRIVATE_KEY_WALLET,
+  COLLATERAL_TO_USE,
 } = require("../config/constants");
 
 BigNumber.set({ EXPONENTIAL_AT: [-18, 36] });
 
 class Middleware {
   constructor() {
-    this.factoryContractInstance = new FactoryContract();
     this.mongoInstance = new Mongo();
     this.provider = new ethers.providers.JsonRpcProvider(HTTP_PROVIDER);
+    this.addressesContract = addresses[NETWORK_ID];
+    this.contractInstances = this.generateContractInstances();
+    this.wallet = new ethers.Wallet(PRIVATE_KEY_WALLET, this.provider);
+  }
+
+  /*
+  CONTRACT LOGIC
+  */
+
+  getContractCtoken(name) {
+    const abiCtoken = name == "cRBTC" ? abi.cRBTC : abi.cErc20;
+    return new ethers.Contract(
+      this.addressesContract[name],
+      abiCtoken,
+      this.provider
+    );
+  }
+
+  getDefaultSigner() {
+    const format = this.provider.formatter.formats;
+    const signer = this.provider.getSigner();
+    Object.assign(signer.provider.formatter, { format });
+    return signer;
+  }
+
+  getContractByNameAndAbiName(nameContract, nameAbi) {
+    return new ethers.Contract(
+      this.addressesContract[nameContract],
+      abi[nameAbi],
+      this.provider
+    );
+  }
+
+  generateContractInstances() {
+    let contractInstances = new Map();
+    for (let i = 0; i < cTokensDetails.length; i++) {
+      const contractInstance = this.getContractCtoken(cTokensDetails[i].symbol);
+      contractInstances.set(cTokensDetails[i].symbol, contractInstance);
+      // generate log here
+    }
+    return contractInstances;
   }
 
   async borrowAccountsByMarket(isCRBTC, contractInstance, contractSymbol) {
@@ -43,7 +85,7 @@ class Middleware {
               borrowAmount: new BigNumber(borrowAmount.toString())
                 .div(1e18)
                 .toString(),
-              marketBorrowed: contractSymbol,
+              borrowMarket: contractSymbol,
             };
           });
           auxiliar = [
@@ -69,9 +111,7 @@ class Middleware {
     for (let i = 0; i < cTokensDetails.length; i++) {
       const borrowAccountsByMarket = await this.borrowAccountsByMarket(
         cTokensDetails[i].symbol === CRBTC_SYMBOL,
-        this.factoryContractInstance.getContractCtoken(
-          cTokensDetails[i].symbol
-        ),
+        this.contractInstances.get(cTokensDetails[i].symbol),
         cTokensDetails[i].symbol
       );
       allMarketBorrowAccounts.push(...borrowAccountsByMarket);
@@ -84,18 +124,17 @@ class Middleware {
         allMarketBorrowAccounts[index].address
       );
 
-      const actualIsRed =
-        new BigNumber(liquidity.accountShortfall.toString()).isGreaterThan(
-          0
-        ) === true
-          ? true
-          : false;
+      const accountShortfall = new BigNumber(
+        liquidity.accountShortfall.toString()
+      );
 
       await this.mongoInstance.saveAndFlush({
         address: allMarketBorrowAccounts[index].address,
-        isRed: actualIsRed,
+        shortfall: accountShortfall.isGreaterThan(0)
+          ? accountShortfall.toString()
+          : 0,
         borrowAmount: allMarketBorrowAccounts[index].borrowAmount,
-        marketBorrowed: allMarketBorrowAccounts[index].marketBorrowed,
+        borrowMarket: allMarketBorrowAccounts[index].borrowMarket,
       });
     }
     // close connection to db
@@ -103,7 +142,7 @@ class Middleware {
   }
 
   async getAccountLiquidity(account) {
-    const contract = this.factoryContractInstance.getContractByNameAndAbiName(
+    const contract = this.getContractByNameAndAbiName(
       constants.Unitroller,
       constants.Comptroller
     );
@@ -117,6 +156,56 @@ class Middleware {
       accountLiquidityInExcess,
       accountShortfall,
     };
+  }
+
+  /*
+  async liquidateBorrowAllowed(
+    liquidateAccountAddress,
+    liquidatorAccountAddress,
+    amount,
+    addressLiquidateMarket,
+    addressCollateralMarket
+  ) {
+    //parse amount
+    const decimal = 18;
+    let amountBN = ethers.utils.parseUnits(amount.toFixed(decimal), decimal);
+    //get contract and signer
+    const contract = this.getContractByNameAndAbiName(
+      constants.Unitroller,
+      constants.Comptroller
+    );
+    const signer = contract.connect(this.getDefaultSigner());
+    //call liquidateBorrowAllowed
+    return await signer.callStatic.liquidateBorrowAllowed(
+      addressLiquidateMarket,
+      addressCollateralMarket,
+      liquidatorAccountAddress,
+      liquidateAccountAddress,
+      amountBN.toString()
+    );
+  }
+  */
+
+  async liquidateBorrow(
+    accountToLiquidate,
+    borrowMarketSymbol,
+    amountToLiquidate
+  ) {
+    const collateralAddress = this.addressesContract[COLLATERAL_TO_USE];
+    const contractInstance = this.contractInstances.get(borrowMarketSymbol);
+
+    const signer = contractInstance.connect(this.wallet);
+
+    if (!(borrowMarketSymbol === CRBTC_SYMBOL)) {
+      return signer.liquidateBorrow(
+        accountToLiquidate,
+        amountToLiquidate,
+        collateralAddress
+      );
+    }
+    return signer.liquidateBorrow(accountToLiquidate, collateralAddress, {
+      value: amountToLiquidate,
+    });
   }
 }
 
