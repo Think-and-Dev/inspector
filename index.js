@@ -7,5 +7,11 @@ const Liquidator = require("./middleware/liquidator")
 middleware.getAccountUnderwater();
 */
 
+/*
+const middleware = new Middleware();
+middleware.getWalletAccountBalance("RIF");
+*/
+
+
 const liquidator = new Liquidator();
 liquidator.liquidateAllAccounts()
