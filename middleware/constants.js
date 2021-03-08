@@ -1,11 +1,13 @@
 const { Comptroller } = require("../abis/comptroller");
 const { CERC20 } = require("../abis/cErc20");
 const { CRBTC } = require("../abis/cRBTC");
+const { PriceOracleProxy } = require("../abis/priceOracleProxy");
 
 const abi = {
   Comptroller: Comptroller,
   cRBTC: CRBTC,
   cErc20: CERC20,
+  PriceOracleProxy: PriceOracleProxy,
 };
 
 const constants = {
@@ -20,8 +22,11 @@ const constants = {
 const decimals = {
   RBTC: 18,
   cRBTC: 8,
-  crUSDT: 8,
+  RIF: 18,
   cRIF: 8,
+  RLEN: 18,
+  crUSDT: 8,
+  rUSDT: 18,
 };
 
 const cTokensDetails = [
@@ -85,6 +90,9 @@ const addresses = {
     cRBTC: "0xc19f0882bf318c9f8767c7d520018888e878417b",
     crUSDT: "0xfd09f3349fdab173d162cd0e4669b591ed5a78fb",
     cRIF: "0x4664d4cbd5104a0e974354724cbc8e0d9bd1aca3",
+    RIF: "0x19f64674d8a5b4e652319f5e239efd3bc969a1fe",
+    rUSDT: "0x4cfe225ce54c6609a525768b13f7d87432358c57",
+    PriceOracleProxy: "0xbe898c9fc63c0185bc6e403e7b9c12e341a60aa7",
   },
 };
 
@@ -93,4 +101,5 @@ module.exports = {
   constants,
   cTokensDetails,
   addresses,
+  decimals,
 };

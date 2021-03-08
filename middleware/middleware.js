@@ -1,7 +1,13 @@
 const Mongo = require("../Mongo");
 const BigNumber = require("bignumber.js");
 const { ethers } = require("ethers");
-const { abi, cTokensDetails, constants, addresses } = require("./constants");
+const {
+  abi,
+  cTokensDetails,
+  constants,
+  addresses,
+  decimals,
+} = require("./constants");
 const {
   HTTP_PROVIDER,
   INITIAL_BLOCK,
@@ -9,6 +15,7 @@ const {
   NETWORK_ID,
   PRIVATE_KEY_WALLET,
   COLLATERAL_TO_USE,
+  LIQUIDATOR_ADDRESS,
 } = require("../config/constants");
 
 BigNumber.set({ EXPONENTIAL_AT: [-18, 36] });
@@ -20,6 +27,8 @@ class Middleware {
     this.addressesContract = addresses[NETWORK_ID];
     this.contractInstances = this.generateContractInstances();
     this.wallet = new ethers.Wallet(PRIVATE_KEY_WALLET, this.provider);
+    this.factor = 1e18;
+    this.gasLimit = 250000;
   }
 
   /*
@@ -58,6 +67,15 @@ class Middleware {
       // generate log here
     }
     return contractInstances;
+  }
+
+  async getLiquidationFactor() {
+    const contract = this.getContractByNameAndAbiName(
+      constants.Unitroller,
+      constants.Comptroller
+    );
+    const liqFactor = await contract.closeFactorMantissa();
+    return liqFactor;
   }
 
   async borrowAccountsByMarket(isCRBTC, contractInstance, contractSymbol) {
@@ -158,34 +176,6 @@ class Middleware {
     };
   }
 
-  /*
-  async liquidateBorrowAllowed(
-    liquidateAccountAddress,
-    liquidatorAccountAddress,
-    amount,
-    addressLiquidateMarket,
-    addressCollateralMarket
-  ) {
-    //parse amount
-    const decimal = 18;
-    let amountBN = ethers.utils.parseUnits(amount.toFixed(decimal), decimal);
-    //get contract and signer
-    const contract = this.getContractByNameAndAbiName(
-      constants.Unitroller,
-      constants.Comptroller
-    );
-    const signer = contract.connect(this.getDefaultSigner());
-    //call liquidateBorrowAllowed
-    return await signer.callStatic.liquidateBorrowAllowed(
-      addressLiquidateMarket,
-      addressCollateralMarket,
-      liquidatorAccountAddress,
-      liquidateAccountAddress,
-      amountBN.toString()
-    );
-  }
-  */
-
   async liquidateBorrow(
     accountToLiquidate,
     borrowMarketSymbol,
@@ -205,6 +195,129 @@ class Middleware {
     }
     return signer.liquidateBorrow(accountToLiquidate, collateralAddress, {
       value: amountToLiquidate,
+    });
+  }
+  /**
+   * @notice returns the max amount that asset can be liquidate
+   * @param borrowAccount The borrower address account that are in shortfall
+   * @param borrowAmount The borrow amount expressed in USD
+   * @param borrowMarket The market where was made the borrow by borrower address
+   */
+
+  async maxToLiquidate(borrowAccount, borrowAmount, borrowMarket) {
+    // the borrower account are entered in market given my COLLATERAL_TO_USE?
+    if (!(await this.checkIsCollateral(borrowAccount)))
+      throw Error("The borrower doesn't have the COLLATERAL_TO_USE");
+
+    const priceToken = (await this.getPriceInDecimals(borrowMarket)).toString();
+    const priceTokenLiquidatorCollateral = (
+      await this.getPriceInDecimals(COLLATERAL_TO_USE)
+    ).toString();
+
+    const liqFactor = (await this.getLiquidationFactor()).toString();
+
+    const borrowPerCloseFactor = new BigNumber(borrowAmount)
+      .multipliedBy(liqFactor)
+      .div(this.factor)
+      .div(priceToken)
+      .toString();
+
+    const maxAssetCollateralBorrower = new BigNumber(
+      await this.getBalanceTokens(borrowAccount)
+    )
+      .multipliedBy(priceTokenLiquidatorCollateral)
+      .div(priceToken)
+      .toString();
+
+    const balanceOfLiquidatorToken = await this.getWalletAccountBalance(
+      borrowMarket
+    );
+    const gasPrice = await this.getGasPrice();
+    const fullFunds = new BigNumber(balanceOfLiquidatorToken).minus(
+      gasPrice.multipliedBy(this.gasLimit)
+    );
+    const maxFunds = fullFunds.isNegative() ? 0 : fullFunds.toString();
+
+    // SI ES RBTC, HAY QUE HACER LA RESTA
+    return BigNumber.minimum(
+      borrowAmount, // change for maxCollateralSuplied in contract
+      borrowPerCloseFactor, // max percentage that can be liquidated
+      maxAssetCollateralBorrower,
+      maxFunds // max funds lol
+    );
+  }
+
+  async getBalanceTokens(accountAddress) {
+    const contractInstance = this.contractInstances.get(COLLATERAL_TO_USE);
+    const balance = await contractInstance.callStatic.balanceOfUnderlying(
+      accountAddress
+    );
+    return ethers.utils.formatUnits(
+      balance,
+      decimals[COLLATERAL_TO_USE.substr(1)]
+    );
+  }
+
+  async getWalletAccountBalance(marketSymbol) {
+    if (marketSymbol === CRBTC_SYMBOL) return getWalletAccountBalanceRBTC();
+    const tokenSymbol = marketSymbol.substr(1);
+    const tokenAddress = this.addressesContract[tokenSymbol];
+    const abi = ["function balanceOf(address) returns (uint)"];
+    const contractInstance = new ethers.Contract(
+      tokenAddress,
+      abi,
+      this.provider
+    );
+    const balance = await contractInstance.callStatic.balanceOf(
+      LIQUIDATOR_ADDRESS
+    );
+    return ethers.utils.formatEther(balance);
+  }
+
+  async getWalletAccountBalanceRBTC() {
+    const balance = await this.provider.getBalance(LIQUIDATOR_ADDRESS);
+    return ethers.utils.formatEther(balance);
+  }
+
+  async getPriceInDecimals(cToken) {
+    const nameContract = "PriceOracleProxy";
+    const contractInstanceOracle = new ethers.Contract(
+      this.addressesContract[nameContract],
+      abi[nameContract],
+      this.provider
+    );
+    const underlyingPrice = await contractInstanceOracle.callStatic.getUnderlyingPrice(
+      this.addressesContract[cToken]
+    );
+    const price = new BigNumber(underlyingPrice.toString()).toNumber();
+
+    return new BigNumber(price).div(this.factor);
+  }
+
+  async checkIsCollateral(account) {
+    const assets = await this.getAssetsIn(account);
+
+    const collateralLiquidatorAddress = this.addressesContract[
+      COLLATERAL_TO_USE
+    ];
+
+    return assets.find(
+      (asset) =>
+        asset.toLowerCase() === collateralLiquidatorAddress.toLowerCase()
+    );
+  }
+
+  async getAssetsIn(account) {
+    const contract = this.getContractByNameAndAbiName(
+      constants.Unitroller,
+      constants.Comptroller
+    );
+    return contract.getAssetsIn(account);
+  }
+
+  async getGasPrice() {
+    return this.provider.getGasPrice().then((price) => {
+      return new BigNumber(price.toString()).div(this.factor);
     });
   }
 }
