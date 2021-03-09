@@ -2,12 +2,14 @@ const { Comptroller } = require("../abis/comptroller");
 const { CERC20 } = require("../abis/cErc20");
 const { CRBTC } = require("../abis/cRBTC");
 const { PriceOracleProxy } = require("../abis/priceOracleProxy");
+const { RlendingLens } = require("../abis/rLendingLens");
 
 const abi = {
   Comptroller: Comptroller,
   cRBTC: CRBTC,
   cErc20: CERC20,
   PriceOracleProxy: PriceOracleProxy,
+  RlendingLens: RlendingLens,
 };
 
 const constants = {
@@ -17,6 +19,7 @@ const constants = {
   RBTC: "RBTC",
   crUSDT: "crUSDT",
   cRIF: "cRIF",
+  RlendingLens: "RlendingLens",
 };
 
 const decimals = {
@@ -93,6 +96,7 @@ const addresses = {
     RIF: "0x19f64674d8a5b4e652319f5e239efd3bc969a1fe",
     rUSDT: "0x4cfe225ce54c6609a525768b13f7d87432358c57",
     PriceOracleProxy: "0xbe898c9fc63c0185bc6e403e7b9c12e341a60aa7",
+    RlendingLens: '0xef9a1856f3cd3b5da7104524065a3d6cc9b7a4b3',
   },
 };
 
