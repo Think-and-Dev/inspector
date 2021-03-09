@@ -255,7 +255,7 @@ class Middleware {
       borrowPerCloseFactor, // max percentage that can be liquidated
       maxAssetCollateralBorrower, //given COLLATERAL_TO_USE, search if the borrower have tokens
       maxFunds // max funds liquidator
-    ).toString();
+    );
 
     return ethers.utils.parseEther(minimum).toString();
   }
