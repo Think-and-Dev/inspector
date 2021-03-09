@@ -201,13 +201,13 @@ class Middleware {
    * @notice returns the max amount that asset can be liquidate
    * @param borrowAccount The borrower address account that are in shortfall
    * @param borrowAmount The borrow amount expressed in USD
-   * @param borrowMarket The market where was made the borrow by borrower address
+   * @param borrowMarket The market symbol where was made the borrow by borrower address
    */
 
   async maxToLiquidate(borrowAccount, borrowAmount, borrowMarket) {
     // the borrower account are entered in market given my COLLATERAL_TO_USE?
     if (!(await this.checkIsCollateral(borrowAccount)))
-      throw Error("The borrower doesn't have the COLLATERAL_TO_USE");
+      throw Error("The borrower doesn't have COLLATERAL_TO_USE");
 
     const priceToken = (await this.getPriceInDecimals(borrowMarket)).toString();
     const priceTokenLiquidatorCollateral = (
@@ -232,19 +232,32 @@ class Middleware {
     const balanceOfLiquidatorToken = await this.getWalletAccountBalance(
       borrowMarket
     );
-    const gasPrice = await this.getGasPrice();
+    const plusGasPrice = new BigNumber(await this.getGasPrice()).multipliedBy(
+      this.gasLimit
+    );
     const fullFunds = new BigNumber(balanceOfLiquidatorToken).minus(
-      gasPrice.multipliedBy(this.gasLimit)
+      borrowMarket === CRBTC_SYMBOL ? plusGasPrice : 0
     );
     const maxFunds = fullFunds.isNegative() ? 0 : fullFunds.toString();
 
-    // SI ES RBTC, HAY QUE HACER LA RESTA
-    return BigNumber.minimum(
-      borrowAmount, // change for maxCollateralSuplied in contract
+    const contractLiquidity = (
+      await this.getContractLiquidity(COLLATERAL_TO_USE)
+    ).toString();
+
+    const contractLiquidityInToken = new BigNumber(contractLiquidity)
+      .multipliedBy(priceTokenLiquidatorCollateral)
+      .div(priceToken)
+      .div(this.factor)
+      .toString();
+
+    const minimum = BigNumber.minimum(
+      contractLiquidityInToken, // contract liquidity
       borrowPerCloseFactor, // max percentage that can be liquidated
-      maxAssetCollateralBorrower,
-      maxFunds // max funds lol
-    );
+      maxAssetCollateralBorrower, //given COLLATERAL_TO_USE, search if the borrower have tokens
+      maxFunds // max funds liquidator
+    ).toString();
+
+    return ethers.utils.parseEther(minimum).toString();
   }
 
   async getBalanceTokens(accountAddress) {
@@ -319,6 +332,19 @@ class Middleware {
     return this.provider.getGasPrice().then((price) => {
       return new BigNumber(price.toString()).div(this.factor);
     });
+  }
+
+  async getContractLiquidity(symbol) {
+    const name = constants.RlendingLens;
+    const contract = new ethers.Contract(
+      this.addressesContract[name],
+      abi[name],
+      this.provider
+    );
+    const { totalCash } = await contract.callStatic.cTokenMetadata(
+      this.addressesContract[symbol]
+    );
+    return totalCash;
   }
 }
 

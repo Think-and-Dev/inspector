@@ -30,7 +30,7 @@ class Liquidator {
             account.address,
             account.borrowMarket,
             //"000000100000000000"
-            this.middlewareInstance.maxToLiquidate(
+            await this.middlewareInstance.maxToLiquidate(
               account.address,
               account.borrowAmount,
               account.borrowMarket
