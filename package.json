@@ -4,7 +4,9 @@
   "description": "Obtain accounts of shortfall and liquidate",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "populate": "run-func index.js populate",
+    "liquidate": "run-func index.js liquidate"
   },
   "repository": {
     "type": "git",
@@ -18,6 +20,7 @@
     "bignumber.js": "^9.0.1",
     "ethers": "^5.0.30",
     "log4js": "^6.3.0",
-    "mongodb": "^3.6.4"
+    "mongodb": "^3.6.4",
+    "run-func": "^1.0.5"
   }
 }

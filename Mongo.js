@@ -1,6 +1,6 @@
 const { MongoClient } = require("mongodb");
-const log4js = require("log4js");
 const { MONGO_URI, MONGO_DB_NAME } = require("./config/constants");
+const log4js = require("log4js");
 
 class Mongo {
   constructor() {
@@ -15,12 +15,6 @@ class Mongo {
     try {
       const collection = await this.getConnection();
       await collection.insertOne(persistentObject);
-
-      /*
-      const query = { address: persistentObject.address };
-      const acc = await collection.findOne(query);
-      console.log(acc);
-      */
     } catch (err) {
       this.logger.error(
         "Error inserting:",

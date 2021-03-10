@@ -17,11 +17,14 @@ const {
   COLLATERAL_TO_USE,
   LIQUIDATOR_ADDRESS,
 } = require("../config/constants");
+const log4js = require("log4js");
 
 BigNumber.set({ EXPONENTIAL_AT: [-18, 36] });
 
 class Middleware {
   constructor() {
+    this.logger = log4js.getLogger();
+    this.logger.level = "info";
     this.mongoInstance = new Mongo();
     this.provider = new ethers.providers.JsonRpcProvider(HTTP_PROVIDER);
     this.addressesContract = addresses[NETWORK_ID];
@@ -36,6 +39,7 @@ class Middleware {
   */
 
   getContractCtoken(name) {
+    this.logger.info("cToken Contract initialized | Name contract: " + name);
     const abiCtoken = name == "cRBTC" ? abi.cRBTC : abi.cErc20;
     return new ethers.Contract(
       this.addressesContract[name],
@@ -52,6 +56,10 @@ class Middleware {
   }
 
   getContractByNameAndAbiName(nameContract, nameAbi) {
+    this.logger.info(
+      "Contract initialized",
+      "Name contract: " + nameContract + " | Name ABI: " + nameAbi
+    );
     return new ethers.Contract(
       this.addressesContract[nameContract],
       abi[nameAbi],
@@ -60,12 +68,14 @@ class Middleware {
   }
 
   generateContractInstances() {
+    this.logger.info("Generating locally the contract instances...");
     let contractInstances = new Map();
     for (let i = 0; i < cTokensDetails.length; i++) {
       const contractInstance = this.getContractCtoken(cTokensDetails[i].symbol);
       contractInstances.set(cTokensDetails[i].symbol, contractInstance);
       // generate log here
     }
+    this.logger.info("Contracts generated!");
     return contractInstances;
   }
 
@@ -75,10 +85,14 @@ class Middleware {
       constants.Comptroller
     );
     const liqFactor = await contract.closeFactorMantissa();
+    this.logger.info("getLiquidationFactor() | " + liqFactor);
     return liqFactor;
   }
 
   async borrowAccountsByMarket(isCRBTC, contractInstance, contractSymbol) {
+    this.logger.info(
+      "Searching borrow events in the contract: " + contractSymbol
+    );
     let borrows = [];
 
     if (!HTTP_PROVIDER) return borrows;
@@ -87,14 +101,24 @@ class Middleware {
     const filterLocal = contractInstance.filters.Borrow();
     const latest = await this.provider.getBlockNumber();
 
+    this.logger.info(
+      "The initial block is: " +
+        INITIAL_BLOCK +
+        " and the latest block is " +
+        latest
+    );
     for (let index = latest; index > INITIAL_BLOCK; index -= 1000) {
       try {
+        this.logger.info(
+          "Searching between blocks: " + (index - 1000) + " => " + index
+        );
         let logs = await this.provider.getLogs({
           ...filterLocal,
           fromBlock: index - 1000,
           toBlock: index,
         });
         if (logs.length > 0) {
+          this.logger.info(logs.length + " logs have been found!");
           let auxiliar = logs.map(function (element) {
             const iface = new ethers.utils.Interface(abiCtoken);
             const { borrowAmount } = iface.parseLog(element).args;
@@ -106,19 +130,47 @@ class Middleware {
               borrowMarket: contractSymbol,
             };
           });
+
+          var result = new Map();
+          auxiliar.forEach((element) => {
+            const actualElement = result.get(element.address);
+            const sum = actualElement
+              ? new BigNumber(actualElement).plus(element.borrowAmount)
+              : element.borrowAmount;
+            result.set(element.address, sum.toString());
+          });
+
           auxiliar = [
             ...new Map(auxiliar.map((acc) => [acc.address, acc])).values(),
           ];
+
+          auxiliar.forEach((element) => {
+            element.borrowAmount = result.get(element.address);
+          });
 
           for (let index = 0; index < auxiliar.length; index++) {
             borrows.push(auxiliar[index]);
           }
         }
       } catch (error) {
-        console.error("ERROR", error);
+        this.logger.error("ERROR", error);
       }
     }
+
+    var result = new Map();
+    borrows.forEach((element) => {
+      const actualElement = result.get(element.address);
+      const sum = actualElement
+        ? new BigNumber(actualElement).plus(element.borrowAmount)
+        : element.borrowAmount;
+      result.set(element.address, sum.toString());
+    });
+
     borrows = [...new Map(borrows.map((acc) => [acc.address, acc])).values()];
+
+    borrows.forEach((element) => {
+      element.borrowAmount = result.get(element.address);
+    });
     return borrows;
   }
 
@@ -209,6 +261,7 @@ class Middleware {
     if (!(await this.checkIsCollateral(borrowAccount)))
       throw Error("The borrower doesn't have COLLATERAL_TO_USE");
 
+    // get the price tokens in USD
     const priceToken = (await this.getPriceInDecimals(borrowMarket)).toString();
     const priceTokenLiquidatorCollateral = (
       await this.getPriceInDecimals(COLLATERAL_TO_USE)
@@ -216,12 +269,14 @@ class Middleware {
 
     const liqFactor = (await this.getLiquidationFactor()).toString();
 
+    // calculate the borrowPerCloseFactor in borrowMarket token
     const borrowPerCloseFactor = new BigNumber(borrowAmount)
       .multipliedBy(liqFactor)
       .div(this.factor)
       .div(priceToken)
       .toString();
 
+    // calculate the tokens supplied in the borrow collateral in borrowMarket token
     const maxAssetCollateralBorrower = new BigNumber(
       await this.getBalanceTokens(borrowAccount)
     )
@@ -229,6 +284,7 @@ class Middleware {
       .div(priceToken)
       .toString();
 
+    // get the balance in the account in borrowMarketTOken
     const balanceOfLiquidatorToken = await this.getWalletAccountBalance(
       borrowMarket
     );
@@ -255,11 +311,15 @@ class Middleware {
       borrowPerCloseFactor, // max percentage that can be liquidated
       maxAssetCollateralBorrower, //given COLLATERAL_TO_USE, search if the borrower have tokens
       maxFunds // max funds liquidator
-    );
+    ).toString();
 
     return ethers.utils.parseEther(minimum).toString();
   }
 
+  /**
+   * @notice returns balance tokens in the contract of an address
+   * @param accountAddress The address account to check
+   */
   async getBalanceTokens(accountAddress) {
     const contractInstance = this.contractInstances.get(COLLATERAL_TO_USE);
     const balance = await contractInstance.callStatic.balanceOfUnderlying(
@@ -271,6 +331,10 @@ class Middleware {
     );
   }
 
+  /**
+   * @notice returns balance wallet of LIQUIDATOR_ADDRESS given an cToken
+   * @param marketSymbol The cToken symbol of the asset
+   */
   async getWalletAccountBalance(marketSymbol) {
     if (marketSymbol === CRBTC_SYMBOL) return getWalletAccountBalanceRBTC();
     const tokenSymbol = marketSymbol.substr(1);
@@ -292,6 +356,10 @@ class Middleware {
     return ethers.utils.formatEther(balance);
   }
 
+  /**
+   * @notice returns the price of a token given the cToken symbol
+   * @param cToken The cToken symbol to check
+   */
   async getPriceInDecimals(cToken) {
     const nameContract = "PriceOracleProxy";
     const contractInstanceOracle = new ethers.Contract(
@@ -307,8 +375,12 @@ class Middleware {
     return new BigNumber(price).div(this.factor);
   }
 
-  async checkIsCollateral(account) {
-    const assets = await this.getAssetsIn(account);
+  /**
+   * @notice check if given an address account, have the COLLATERAL_TO_USE like collateral asset
+   * @param accountAddress The cToken symbol to check
+   */
+  async checkIsCollateral(accountAddress) {
+    const assets = await this.getAssetsIn(accountAddress);
 
     const collateralLiquidatorAddress = this.addressesContract[
       COLLATERAL_TO_USE
