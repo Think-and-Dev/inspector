@@ -19,7 +19,8 @@ const {
 } = require("../config/constants");
 const log4js = require("log4js");
 
-BigNumber.set({ EXPONENTIAL_AT: [-18, 36] });
+BigNumber.config({ DECIMAL_PLACES: 18 });
+BigNumber.set({ EXPONENTIAL_AT: [-18, 36], DECIMAL_PLACES: 18 });
 
 class Middleware {
   constructor() {
@@ -67,6 +68,7 @@ class Middleware {
     );
   }
 
+  // to avoid create many instance of the same contract
   generateContractInstances() {
     this.logger.info("Generating locally the contract instances...");
     let contractInstances = new Map();
@@ -250,13 +252,18 @@ class Middleware {
     });
   }
   /**
-   * @notice returns the max amount that asset can be liquidate
+   * @notice returns the max amount that asset can be liquidate, the actual borrow amount is get by accountSnapshot
    * @param borrowAccount The borrower address account that are in shortfall
-   * @param borrowAmount The borrow amount expressed in USD
    * @param borrowMarket The market symbol where was made the borrow by borrower address
    */
 
-  async maxToLiquidate(borrowAccount, borrowAmount, borrowMarket) {
+  async maxToLiquidate(borrowAccount, borrowMarket) {
+    const accountBorrowSnapshot = new BigNumber(
+      (await this.getPendingBorrow(borrowAccount, borrowMarket)).toString()
+    )
+      .div(this.factor)
+      .toString();
+
     // the borrower account are entered in market given my COLLATERAL_TO_USE?
     if (!(await this.checkIsCollateral(borrowAccount)))
       throw Error("The borrower doesn't have COLLATERAL_TO_USE");
@@ -270,7 +277,7 @@ class Middleware {
     const liqFactor = (await this.getLiquidationFactor()).toString();
 
     // calculate the borrowPerCloseFactor in borrowMarket token
-    const borrowPerCloseFactor = new BigNumber(borrowAmount)
+    const borrowPerCloseFactor = new BigNumber(accountBorrowSnapshot)
       .multipliedBy(liqFactor)
       .div(this.factor)
       .div(priceToken)
@@ -313,7 +320,7 @@ class Middleware {
       maxFunds // max funds liquidator
     ).toString();
 
-    return ethers.utils.parseEther(minimum).toString();
+    return minimum;
   }
 
   /**
@@ -336,7 +343,7 @@ class Middleware {
    * @param marketSymbol The cToken symbol of the asset
    */
   async getWalletAccountBalance(marketSymbol) {
-    if (marketSymbol === CRBTC_SYMBOL) return getWalletAccountBalanceRBTC();
+    if (marketSymbol === CRBTC_SYMBOL) return this.getWalletAccountBalanceRBTC();
     const tokenSymbol = marketSymbol.substr(1);
     const tokenAddress = this.addressesContract[tokenSymbol];
     const abi = ["function balanceOf(address) returns (uint)"];
@@ -417,6 +424,11 @@ class Middleware {
       this.addressesContract[symbol]
     );
     return totalCash;
+  }
+
+  async getPendingBorrow(borrowAccount, borrowMarket) {
+    const contract = this.contractInstances.get(borrowMarket);
+    return (await contract.getAccountSnapshot(borrowAccount))[2];
   }
 }
 

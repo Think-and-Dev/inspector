@@ -14,7 +14,33 @@ class Mongo {
   async saveAndFlush(persistentObject) {
     try {
       const collection = await this.getConnection();
-      await collection.insertOne(persistentObject);
+      const object = await collection.findOne({
+        address: persistentObject.address,
+        borrowMarket: persistentObject.borrowMarket,
+      });
+      // if the object exists, replace the values, an object is different by address+market where was market borrow
+      if (object) {
+        this.logger.info(
+          "Updating account: " +
+            persistentObject.address +
+            " in the market: " +
+            persistentObject.borrowMarket
+        );
+        await collection.updateOne(object, {
+          $set: {
+            borrowAmount: persistentObject.borrowAmount,
+            shortfall: persistentObject.shortfall,
+          },
+        });
+      } else {
+        this.logger.info(
+          "Persisting new account: " +
+            persistentObject.address +
+            " in the market: " +
+            persistentObject.borrowMarket
+        );
+        await collection.insertOne(persistentObject);
+      }
     } catch (err) {
       this.logger.error(
         "Error inserting:",
