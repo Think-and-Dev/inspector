@@ -1,31 +1,17 @@
-# liquidation
+Inspector "Clouseau"
+=================
+Inspector is a tool to search for events in smart contracts
 
-**Liquidation** is a bot for liquidate all borrowers that are shortfall, to use in `rLending-protocol`.
+Installation
+------------
+To run the inspector, pull the repository from GitHub and install its dependencies. You will need [yarn](https://yarnpkg.com/lang/en/docs/install/) or [npm](https://docs.npmjs.com/cli/install) installed.
 
-Through this application, the potentials liquidators will'be enable to liquidate accounts automatically.
+    git clone https://github.com/riflending/rlending-protocol
+    cd rlending-protocol
+    yarn install --lock-file # or `npm install`
 
-`yarn run populate`
-
-`yarn run liquidate`
-
-### - populate
-This method search all borrow logs event in the blockchain, and save the borrowers in database
-
-### - liquidate
-Pull all borrows from database, calculate the max amount to liquidate, and liquidate them.
-
-# How to (developers)
-## Requirements:
----
-- yarn ^v1.22
-- node 12.x
-- node database 4.4.x
-- file configuration (constants.js)
-
----
-## Usage
----
-1. Clone the repository to your localhost.
-2. Open terminal into folder project.
-3. Run `yarn install`
-4. Run the desired command, `yarn run populate` or `yarn run liquidate`
+Usage
+------------
+1. Copy the abi of smart contract inside the abi folder .
+2. Complete your config file.
+3. Run `yarn start`

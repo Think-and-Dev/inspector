@@ -1,4 +1,4 @@
-const CRBTC = [
+export const CRBTC = [
   {
     inputs: [
       { internalType: 'contract ComptrollerInterface', name: 'comptroller_', type: 'address' },
@@ -867,6 +867,6 @@ const CRBTC = [
   },
 ]
 
-module.exports = {
-  CRBTC
-}
+// module.exports = {
+//   CRBTC
+// }
