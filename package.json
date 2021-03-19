@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Obtain accounts of shortfall and liquidate",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
-    "populate": "run-func index.js populate",
-    "liquidate": "run-func index.js liquidate"
+    "testMongo": "node test/mongo/TestMongo.js"
   },
   "repository": {
     "type": "git",
@@ -17,10 +17,10 @@
   "homepage": "https://github.com/riflending/liquidation#readme",
   "private": true,
   "dependencies": {
+    "assert": "^2.0.0",
     "bignumber.js": "^9.0.1",
     "ethers": "^5.0.30",
     "log4js": "^6.3.0",
-    "mongodb": "^3.6.4",
-    "run-func": "^1.0.5"
+    "mongodb": "^3.6.5"
   }
 }

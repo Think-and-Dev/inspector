@@ -1,4 +1,4 @@
-const CERC20 = [
+export const CERC20 = [
   {
     constant: true,
     inputs: [],
@@ -670,6 +670,6 @@ const CERC20 = [
   },
 ]
 
-module.exports = {
-  CERC20
-}
+// module.exports = {
+//   CERC20
+// }

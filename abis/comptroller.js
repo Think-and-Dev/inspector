@@ -1,4 +1,4 @@
-const Comptroller = [
+export const Comptroller = [
   {
     inputs: [],
     payable: false,
@@ -1266,4 +1266,4 @@ const Comptroller = [
   },
 ];
 
-module.exports = { Comptroller };
+// module.exports = { Comptroller };
