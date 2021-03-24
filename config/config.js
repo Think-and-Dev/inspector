@@ -16,10 +16,10 @@ export const gralConfig = {
 }
 export const toSearch = [
     {
-        contractName: "",//not required
+        contractName: "cRBTC",//not required
         address: "0xc19f0882bf318c9f8767c7d520018888e878417b",
         abi: "cRBTC",
-        events: "Borrow", //empty = all events
+        events: ["AccrueInterest","Borrow"], //empty = all events
     },
     {
         contractName: "crUSDT",//not required
@@ -33,7 +33,7 @@ export const toSearch = [
         contractName: "",//not required
         address: "0xc19f0882bf318c9f8767c7d520018888e878417b",
         abi: "cRBTC",
-        events: "AccrueInterest", //empty = all events
+        events: ["AccrueInterest",] //empty = all events
     },
     {
         address: "0xc19f0882bf318c9f8767c7d520018888e878417b",
@@ -44,7 +44,7 @@ export const toSearch = [
 export const mongoDataClient = {
     uri: "mongodb://127.0.0.1:27017/mongodb",
     db: "rLending",
-    collection: "history",
-    user: "",
-    password: ""
+    configCollection: "history",
+    user: "",//TODO
+    password: ""//TODO
 }
