@@ -32,14 +32,73 @@ export default class Search {
         return
     }
 
-    getFilters(objAbi) {
+    getFilters(objAbi, events = []) {
         let retorno = []
         for (let i = 0; i < objAbi.length; i++) {
             if ((!!objAbi[i].type) && (objAbi[i].type === 'event')) {
+                if (events.length > 0) {
+                    if (!events.includes(objAbi[i].name))
+                        continue
+                }
                 retorno.push(objAbi[i].name)
             }
         }
         return retorno
+    }
+
+    async verifySearchInDB(addressSC, events = [], iniBlock, latestBlock) {
+        if ((!events) || (latestBlock < iniBlock)) {
+            return false
+        }
+        const metadataSC = await this.instanceMongo.findSmartContractMetaData(addressSC)
+        if (!metadataSC) return []
+        // if (!metadataSC) {
+        //     const configSC = this.getHistoryConfig(addressSC, events, iniBlock, latestBlock)
+        //     return await this.instanceMongo.setConfigSC(configSC)
+        // }
+        return this.validateSearchEvents(events, iniBlock, latestBlock, metadataSC.history)
+    }
+
+    getHistoryEvent(events = [], fromBLock, toBlock) {
+        let retorno = []
+        for (const key in events) {
+            retorno.push({ event: events[key], iniBlock: fromBLock, latestBlock: toBlock })
+        }
+        return retorno;
+    }
+
+    getHistoryConfig(addressSC, events, iniBlock, latestBlock, nameSC = "") {
+        return { address: addressSC, name: (!nameSC) ? addressSC : nameSC, history: this.getHistoryEvent(events, iniBlock, latestBlock) }
+    }
+
+    validateSearchEvents(events = [], fromBLock, toBlock, history = []) {
+        let blackList = []
+        for (const key in events) {
+            const validate = history.find(x => x.event == events[key])
+            if ((!validate) || (fromBLock >= validate.iniBlock && (fromBLock < validate.latestBlock)) || (toBlock <= validate.latestBlock))
+                blackList.push(events[key])
+
+        }
+        return blackList
+    }
+
+    async setConfigSCtoDB(addressSC, events = [], iniBlock, latestBlock) {
+        //get data history SC
+        const metadataSC = await this.instanceMongo.findSmartContractMetaData(addressSC)
+        if (!metadataSC) {
+            //set new data history SC
+            const configSC = this.getHistoryConfig(addressSC, events, iniBlock, latestBlock)
+            return await this.instanceMongo.setConfigSC(configSC)
+        }
+        let dataEvent = metadataSC.history
+        //remove updates events
+        dataEvent = dataEvent.filter(element => !(events.find(elementEvent => elementEvent == element.event)))
+        //set updates events
+        dataEvent.push(this.getHistoryEvent(events, iniBlock, latestBlock))
+        dataEvent = dataEvent.flat()
+        dataEvent.sort()
+        //update data history SC
+        return await this.instanceMongo.updateConfiSC(addressSC, dataEvent)
     }
 
     async searchEvents() {
@@ -52,38 +111,48 @@ export default class Search {
             try {
                 //get obj abi
                 const objAbi = this.getAbi(search[key].abi)
-                // console.log("FILTROS", this.getFilters(objAbi))
-                //get all events => filters
-                const filtersAbi = this.getFilters(objAbi)
+                //get all events to search => filters
+                let filtersAbi = this.getFilters(objAbi, search[key].events)
+                //set ini block
+                iniBlock = (!search[key].iniBlock) ? ini : search[key].iniBlock
+                //set last block
+                latestBlock = (!search[key].latestBlock) ? latest : search[key].latestBlock
+                //set events to exclude => because already exist in db
+                const balckListFilter = await this.verifySearchInDB(search[key].address, filtersAbi, iniBlock, latestBlock)
+                //exclude event in db
+                filtersAbi = filtersAbi.filter(elementAbi => !(balckListFilter.find(elementBlack => elementBlack == elementAbi)))
+                //validate exist filter to search
+                if (filtersAbi.length == 0) {
+                    console.log("All events exist in db", search[key])
+                    continue
+                }
                 //get contract
                 const contract = new ethers.Contract(search[key].address, this.getAbi(search[key].abi), this.provider)
-
                 //get all topics of events
                 const topics = filtersAbi.map(x => contract.filters[x]().topics[0])
                 //ini filter to search
                 filter = contract.filters[filtersAbi[0]]()
                 //add all topics (events), added in array to use OR between events
                 filter.topics = [topics]
-                //set ini block
-                iniBlock = (!search[key].iniBlock) ? ini : search[key].iniBlock
-                //set last block
-                latestBlock = (!search[key].latestBlock) ? latest : search[key].latestBlock
-
+                //set search detail
                 let foundDetail = search[key]
                 foundDetail.filter = filter
                 foundDetail.filterNames = filtersAbi
-
                 foundDetail.iniBlock = iniBlock
                 foundDetail.latestBlock = latestBlock
-                console.log("searching: ", foundDetail,"\n")
+                foundDetail.excludeEvents = balckListFilter
+
+                console.log("searching: ", foundDetail, "\n")
                 //add return of searching in array 
-                //TODO could be a promise and then executed all
+                //TODO could be a promise and then executed all search
                 foundDetail.events = await this.searching(this.getAbi(search[key].abi), filter, iniBlock, latestBlock)
                 found.push(foundDetail)
-                console.log("save events for ", foundDetail.contractName, "=>", foundDetail.address, "\n"),
+                console.log("save events for ", foundDetail.contractName, "=>", foundDetail.address, "\n")
+                // const collectionDB = foundDetail.contractName === foundDetail.address
                 //TODO see if insert when "searchEvents" finished
-                this.instanceMongo.insertMany([foundDetail])
-                // console.log(foundDetail)
+                await this.instanceMongo.insertMany([foundDetail], foundDetail.address.substring(2))
+                //save config data search in DB
+                await this.setConfigSCtoDB(search[key].address, filtersAbi, iniBlock, latestBlock)
             } catch (error) {
                 console.error(error)
                 return
@@ -131,7 +200,6 @@ export default class Search {
                     //OR
                     retorno.push(auxiliar)
                     retorno = retorno.flat()
-                    return retorno
                 }
             } catch (error) {
                 console.error('ERROR to find logs', error)
