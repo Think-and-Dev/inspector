@@ -1,4 +1,5 @@
-const { MongoClient } = require("mongodb");
+import MongoPkg from "mongodb"
+const { MongoClient } = MongoPkg;
 class TestMongo{
   constructor(){
     this.uri="mongodb://127.0.0.1:27017/mongodb"
