@@ -1,13 +1,13 @@
 Inspector "Clouseau"
 =================
-Inspector is a tool to search for events in smart contracts
+Inspector is a tool to search events in smart contracts
 
 Installation
 ------------
 To run the inspector, pull the repository from GitHub and install its dependencies. You will need [yarn](https://yarnpkg.com/lang/en/docs/install/) or [npm](https://docs.npmjs.com/cli/install) installed.
 
-    git clone https://github.com/riflending/rlending-protocol
-    cd rlending-protocol
+    git clone https://github.com/riflending/insepctor
+    cd inspector
     yarn install --lock-file # or `npm install`
 
 Usage
