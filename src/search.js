@@ -18,6 +18,14 @@ export default class Search {
         return toSearch
     }
 
+    isToBlockEventLatestInConfig(addressSC) {
+        const dataSearch = this.getDataToSearh();
+        if (!dataSearch) return
+        const dataSearchEvent = dataSearch.find(x => x.address == addressSC)
+        if (!dataSearchEvent) return
+        return !dataSearchEvent.latestBlock
+    }
+
     async getGralConfig() {
         if (!gralConfig) {
             console.error("gral config is not set!!")
@@ -46,17 +54,15 @@ export default class Search {
         return retorno
     }
 
-    async verifySearchInDB(addressSC, events = [], iniBlock, latestBlock) {
+    async verifySearchEventsAndGenerateWhiteList(addressSC, events = [], iniBlock, latestBlock) {
         if ((!events) || (latestBlock < iniBlock)) {
             return false
         }
         const metadataSC = await this.instanceMongo.findSmartContractMetaData(addressSC)
-        if (!metadataSC) return []
-        // if (!metadataSC) {
-        //     const configSC = this.getHistoryConfig(addressSC, events, iniBlock, latestBlock)
-        //     return await this.instanceMongo.setConfigSC(configSC)
-        // }
-        return this.validateSearchEvents(events, iniBlock, latestBlock, metadataSC.history)
+        if (!metadataSC)
+            return events.map((x => ({ event: x, fromBlock: iniBlock, toBlock: latestBlock })))
+
+        return this.generateWhiteList(addressSC, iniBlock, latestBlock, events, metadataSC.history)
     }
 
     getHistoryEvent(events = [], fromBLock, toBlock) {
@@ -71,15 +77,27 @@ export default class Search {
         return { address: addressSC, name: (!nameSC) ? addressSC : nameSC, history: this.getHistoryEvent(events, iniBlock, latestBlock) }
     }
 
-    validateSearchEvents(events = [], fromBLock, toBlock, history = []) {
-        let blackList = []
+    generateWhiteList(addressSC, fromBLock, toBlock, events = [], history = []) {
+        let whiteList = []
         for (const key in events) {
-            const validate = history.find(x => x.event == events[key])
-            if ((!validate) || (fromBLock >= validate.iniBlock && (fromBLock < validate.latestBlock)) || (toBlock <= validate.latestBlock))
-                blackList.push(events[key])
+            const historyEvent = history.find(x => x.event == events[key])
+            let tmpWhiteElement = { event: events[key], fromBlock: fromBLock, toBlock: toBlock };
+
+            if (!historyEvent) whiteList.push(tmpWhiteElement)
+
+            else if (this.isToBlockEventLatestInConfig(addressSC)) {
+                // if (!historyEvent)
+                //     tmpWhiteElement.fromBlock = fromBLock
+                // else
+                tmpWhiteElement.fromBlock = historyEvent.latestBlock
+
+                whiteList.push(tmpWhiteElement)
+            }
+            else if ((fromBLock >= historyEvent.iniBlock && (fromBLock < historyEvent.latestBlock)) || (toBlock <= historyEvent.latestBlock))
+                whiteList.push(events[key])
 
         }
-        return blackList
+        return whiteList
     }
 
     async setConfigSCtoDB(addressSC, events = [], iniBlock, latestBlock) {
@@ -117,10 +135,10 @@ export default class Search {
                 iniBlock = (!search[key].iniBlock) ? ini : search[key].iniBlock
                 //set last block
                 latestBlock = (!search[key].latestBlock) ? latest : search[key].latestBlock
-                //set events to exclude => because already exist in db
-                const balckListFilter = await this.verifySearchInDB(search[key].address, filtersAbi, iniBlock, latestBlock)
-                //exclude event in db
-                filtersAbi = filtersAbi.filter(elementAbi => !(balckListFilter.find(elementBlack => elementBlack == elementAbi)))
+                //generate whitelist events to search (some could be already saved )
+                const whiteListFilter = await this.verifySearchEventsAndGenerateWhiteList(search[key].address, filtersAbi, iniBlock, latestBlock)
+
+                filtersAbi = filtersAbi.filter(elementAbi => (whiteListFilter.find(element => element.event == elementAbi)))
                 //validate exist filter to search
                 if (filtersAbi.length == 0) {
                     console.log("All events exist in db", search[key])
@@ -140,7 +158,7 @@ export default class Search {
                 foundDetail.filterNames = filtersAbi
                 foundDetail.iniBlock = iniBlock
                 foundDetail.latestBlock = latestBlock
-                foundDetail.excludeEvents = balckListFilter
+                foundDetail.eventsToSearch = whiteListFilter
 
                 console.log("searching: ", foundDetail, "\n")
                 //add return of searching in array 
@@ -150,7 +168,7 @@ export default class Search {
                 console.log("save events for ", foundDetail.contractName, "=>", foundDetail.address, "\n")
                 // const collectionDB = foundDetail.contractName === foundDetail.address
                 //TODO see if insert when "searchEvents" finished
-                await this.instanceMongo.insertMany([foundDetail], foundDetail.address.substring(2))
+                await this.instanceMongo.insertMany(foundDetail.events, foundDetail.address.substring(2))
                 //save config data search in DB
                 await this.setConfigSCtoDB(search[key].address, filtersAbi, iniBlock, latestBlock)
             } catch (error) {
