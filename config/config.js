@@ -8,7 +8,7 @@ export const abi = {
     cRBTC: CRBTC,
 }
 
-export const HTTP_PROVIDER = "http://18.218.165.234:4444";
+export const HTTP_PROVIDER = "https://public-node.rsk.co";
 
 export const gralConfig = {
     iniBlock: 1504046,
